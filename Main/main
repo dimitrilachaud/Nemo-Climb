@@ -1,0 +1,101 @@
+import os
+import sys
+
+import pygame
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from Source.background_manager import BackgroundManager
+from Source.camera import Camera
+from Source.platform_manager import PlatformManager
+from Source.player import Player
+from Source.score_manager import ScoreManager
+from Source.ui_manager import UIManager
+
+
+class Game:
+    WIDTH, HEIGHT = 540, 720
+    FPS = 60
+
+    def __init__(self):
+        pygame.init()
+        pygame.display.set_caption("Nemo Climb")
+        self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+        self.clock = pygame.time.Clock()
+        self.running = True
+        self.state = "playing"
+        self.background = BackgroundManager()
+        self.camera = Camera(self.HEIGHT)
+        self.platform_manager = PlatformManager(self.WIDTH, self.HEIGHT)
+        self.score_manager = ScoreManager()
+        self.ui_manager = UIManager()
+        self.player = Player(self.WIDTH // 2 - 17, self.HEIGHT - 99)
+
+    def run(self):
+        while self.running:
+            dt = min(self.clock.tick(self.FPS) / 1000, 1 / 30)
+            self.handle_events()
+            self.update(dt)
+            self.draw()
+        pygame.quit()
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if self.state == "playing":
+                    if event.key == pygame.K_ESCAPE:
+                        self.state = "paused"
+                elif self.state == "paused":
+                    if event.key == pygame.K_ESCAPE:
+                        self.state = "playing"
+                    elif event.key == pygame.K_q:
+                        self.running = False
+                elif self.state == "game_over":
+                    if event.key == pygame.K_r:
+                        self.reset_game()
+                    elif event.key in (pygame.K_q, pygame.K_ESCAPE):
+                        self.running = False
+
+    def update(self, dt):
+        self.background.update(dt)
+        if self.state != "playing":
+            return
+        keys = pygame.key.get_pressed()
+        self.player.handle_input(keys)
+        if keys[pygame.K_SPACE] or keys[pygame.K_UP]:
+            self.player.jump()
+        self.player.update(dt, self.platform_manager.platforms, self.WIDTH)
+        self.camera.update(self.player)
+        self.platform_manager.update(self.player.position.y, self.camera.offset_y)
+        self.score_manager.update(self.player.position.y)
+        if self.player.rect.top + self.camera.offset_y > self.HEIGHT:
+            self.state = "game_over"
+
+    def draw(self):
+        self.background.draw(self.screen)
+        self.platform_manager.draw(self.screen, self.camera)
+        self.player.draw(self.screen, self.camera)
+        self.ui_manager.draw_hud(self.screen, self.score_manager.get_score())
+        if self.state == "paused":
+            self.ui_manager.draw_pause_screen(self.screen)
+        elif self.state == "game_over":
+            self.ui_manager.draw_game_over(self.screen, self.score_manager.get_score())
+        pygame.display.flip()
+
+    def reset_game(self):
+        self.camera.reset()
+        self.platform_manager.reset()
+        start = self.platform_manager.platforms[0]
+        self.player.reset(start.rect.centerx - self.player.width // 2,
+                          start.rect.top - self.player.height)
+        self.score_manager.reset()
+        self.background.reset()
+        self.state = "playing"
+
+
+if __name__ == "__main__":
+    Game().run()
